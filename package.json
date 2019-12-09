@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "postinstall": "touch updated"
+    "postinstall": "touch updated.txt"
   },
   "dependencies": {
     "fastify": "^2.10.0",
