@@ -6,7 +6,7 @@ const fs = require('fs');
 
 const port = '/run/location.sock';
 const app = fastify();
-const client = mongo.MongoClient.connect('mongodb://localhost:27017');
+const client = mongo.MongoClient.connect('mongodb://hal9000.grid.robotjamie.com:27017');
 
 app.register(sse);
 
