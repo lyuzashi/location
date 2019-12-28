@@ -1,7 +1,4 @@
 {
-  "scripts": {
-    "postinstall": "pm2 delete location; NODE_ENV=production pm2 start location-server.js --name location --watch --ignore-watch='node_modules' && pm2 save; true"
-  },
   "dependencies": {
     "fastify": "^2.10.0",
     "mongodb": "^2.2.36",
