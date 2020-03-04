@@ -61,7 +61,7 @@ app.post('/location', async (request, reply) => {
 
 app.get('/location', async (req, reply) => {
   const sseRequest = req.headers.accept.split(',').includes('text/event-stream');
-  const privateRequest = req.header['x-memory-private'] === 'true';
+  const privateRequest = req.headers['x-memory-private'] === 'true';
   const location = await getLastLocation();
   const data = obfuscate(location, privateRequest);
   if (sseRequest) {
