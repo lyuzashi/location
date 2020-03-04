@@ -2,6 +2,7 @@
   "dependencies": {
     "fastify": "^2.10.0",
     "mongodb": "^2.2.36",
+    "randomize-location": "^0.2.0",
     "sly-fastify-sse": "^0.1.6"
   }
 }

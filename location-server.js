@@ -1,7 +1,8 @@
 const mongo = require('mongodb');
 const fastify = require('fastify');
 const sse = require('sly-fastify-sse');
-const { PassThrough } = require("stream");
+const randomizeLocation = require('randomize-location');
+const { PassThrough } = require('stream');
 const fs = require('fs');
 
 const port = process.env.PORT || '/run/location.sock';
@@ -21,6 +22,28 @@ const transform = geo => ({
   },
 });
 
+const obfuscate = (geo, private) => {
+  if (private) return geo;
+  const coordinates = randomizeLocation({
+    lat: geo.geometry.coordinates[1],
+    long: geo.geometry.coordinates[0],
+    radius: 1000,
+    rand1: ((parseInt(geo._id, 16) * 9301 + 49297) % 233280) / 233280,
+    rand2: ((new Date(geo.properties.timestamp) * 9301 + 49297) % 233280) / 233280,
+  });
+  return {
+    type: geo.type,
+    properties: {
+      battery_state: geo.properties.battery_state,
+      battery_level: geo.properties.battery_level,
+    },
+    geometry: {
+      type: geo.geometry.type,
+      coordinates: [coordinates.lat, coordinates.long],
+    }
+  }
+}
+
 const stream = new PassThrough({objectMode: true});
 
 app.post('/location', async (request, reply) => {
@@ -37,11 +60,19 @@ app.post('/location', async (request, reply) => {
 });
 
 app.get('/location', async (req, reply) => {
-  const locations = new PassThrough({objectMode: true});
-  stream.pipe(locations, { end: false });
-  reply.sse(locations);
+  const sseRequest = req.headers.accept.split(',').includes('text/event-stream');
+  const privateRequest = req.header['x-memory-private'] === 'true';
   const location = await getLastLocation();
-  locations.write({ id: location.properties.timestamp, data: location });
+  const data = obfuscate(location, privateRequest);
+  if (sseRequest) {
+    const locations = new PassThrough({objectMode: true});
+    stream.pipe(locations, { end: false });
+    reply.sse(locations);
+    locations.write({ id: location.properties.timestamp, data });
+  } else {
+    reply.send(data);
+  }
+
 });
 
 (async () => {
