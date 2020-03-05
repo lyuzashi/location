@@ -1,8 +1,9 @@
 const mongo = require('mongodb');
 const fastify = require('fastify');
 const sse = require('sly-fastify-sse');
+const cors = require('fastify-cors');
 const randomizeLocation = require('randomize-location');
-const { PassThrough } = require('stream');
+const { PassThrough, Transform } = require('stream');
 const fs = require('fs');
 
 const port = process.env.PORT || '/run/location.sock';
@@ -10,6 +11,7 @@ const app = fastify();
 const client = mongo.MongoClient.connect(process.env.MONGO_URL || 'mongodb://localhost:27017');
 
 app.register(sse);
+app.register(cors);
 
 const getLastLocation = async () => (await client).db('memory').collection('locations').find({})
   .sort({'properties.timestamp': -1}).limit(1).next();
@@ -22,12 +24,16 @@ const transform = geo => ({
   },
 });
 
-const obfuscate = (geo, private) => {
-  if (private) return geo;
+const round = (value, step) => {
+  const inv = 1.0 / step;
+  return Math.round(value * inv) / inv;
+}
+
+const obfuscate = geo => {
   const coordinates = randomizeLocation({
     lat: geo.geometry.coordinates[1],
     long: geo.geometry.coordinates[0],
-    radius: 1000,
+    radius: 555,
     rand1: ((parseInt(geo._id, 16) * 9301 + 49297) % 233280) / 233280,
     rand2: ((new Date(geo.properties.timestamp) * 9301 + 49297) % 233280) / 233280,
   });
@@ -39,7 +45,10 @@ const obfuscate = (geo, private) => {
     },
     geometry: {
       type: geo.geometry.type,
-      coordinates: [coordinates.lat, coordinates.long],
+      coordinates: [
+        round(coordinates.long, 0.05),
+        round(coordinates.lat, 0.05)
+      ],
     }
   }
 }
@@ -60,17 +69,19 @@ app.post('/location', async (request, reply) => {
 });
 
 app.get('/location', async (req, reply) => {
+  console.log(req.headers);
   const sseRequest = req.headers.accept.split(',').includes('text/event-stream');
-  const privateRequest = req.header['x-memory-private'] === 'true';
+  const privateRequest = req.headers['x-memory-private'] === 'true';
   const location = await getLastLocation();
-  const data = obfuscate(location, privateRequest);
   if (sseRequest) {
-    const locations = new PassThrough({objectMode: true});
+    const locations = new Transform({objectMode: true});
+    locations._transform = (chunk, encoding, callback) =>
+      callback(null, privateRequest ? chunk : { ...chunk, data: obfuscate(chunk.data) });
     stream.pipe(locations, { end: false });
     reply.sse(locations);
-    locations.write({ id: location.properties.timestamp, data });
+    locations.write({ id: location.properties.timestamp, data: location });
   } else {
-    reply.send(data);
+    reply.send(privateRequest ? location : obfuscate(location));
   }
 
 });
