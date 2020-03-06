@@ -3,6 +3,7 @@ const fastify = require('fastify');
 const sse = require('sly-fastify-sse');
 const cors = require('fastify-cors');
 const randomizeLocation = require('randomize-location');
+const EventEmitter = require('events');
 const { PassThrough, Transform } = require('stream');
 const fs = require('fs');
 
@@ -12,6 +13,9 @@ const client = mongo.MongoClient.connect(process.env.MONGO_URL || 'mongodb://loc
 
 app.register(sse);
 app.register(cors);
+
+// Create index if it doesn't already exists
+client.then(connection => connection.db('memory').collection('locations').createIndex({ 'properties.timestamp': -1 }));
 
 const getLastLocation = async () => (await client).db('memory').collection('locations').find({})
   .sort({'properties.timestamp': -1}).limit(1).next();
@@ -53,7 +57,7 @@ const obfuscate = geo => {
   }
 }
 
-const stream = new PassThrough({objectMode: true});
+const incomming = new EventEmitter();
 
 app.post('/location', async (request, reply) => {
   reply.send({
@@ -64,12 +68,11 @@ app.post('/location', async (request, reply) => {
   await db.collection('locations').insertMany(locations);
   request.body.trip && await db.collection('trips').insertOne(transform(request.body.trip));
   locations.forEach(location => {
-    stream.write({ id: location.properties.timestamp, data: location });
+    incomming.emit('location', { id: location.properties.timestamp, data: location });
   });
 });
 
 app.get('/location', async (req, reply) => {
-  console.log(req.headers);
   const sseRequest = req.headers.accept.split(',').includes('text/event-stream');
   const privateRequest = req.headers['x-memory-private'] === 'true';
   const location = await getLastLocation();
@@ -77,9 +80,14 @@ app.get('/location', async (req, reply) => {
     const locations = new Transform({objectMode: true});
     locations._transform = (chunk, encoding, callback) =>
       callback(null, privateRequest ? chunk : { ...chunk, data: obfuscate(chunk.data) });
-    stream.pipe(locations, { end: false });
     reply.sse(locations);
     locations.write({ id: location.properties.timestamp, data: location });
+    const handler = event => locations.write(event);
+    incomming.on('location', handler);
+    locations.once('end', () => {
+      console.log('Closed');
+      incomming.off('location', handler);
+    })
   } else {
     reply.send(privateRequest ? location : obfuscate(location));
   }

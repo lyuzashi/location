@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "fastify": "^2.10.0",
+    "fastify-cors": "^3.0.2",
     "mongodb": "^2.2.36",
     "randomize-location": "edorivai/randomize-location",
     "sly-fastify-sse": "^0.1.6"
