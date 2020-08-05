@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "fastify": "^2.10.0",
+    "fastify": "^2.15.1",
     "fastify-cors": "^3.0.2",
     "mongodb": "^2.2.36",
     "randomize-location": "edorivai/randomize-location",
